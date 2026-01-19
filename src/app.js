@@ -1,7 +1,7 @@
 const Koa = require('koa'); // 引入 Koa 框架
 const Router = require('@koa/router'); // 引入 Koa 路由
 const serve = require('koa-static'); // 引入 koa-static，用于处理静态文件
-const koaBody = require('koa-body'); // 引入 koa-body，用于解析请求体
+const { koaBody } = require('koa-body'); // 引入 koa-body，用于解析请求体
 const fs = require('fs'); // 引入 Node.js 文件系统模块
 const path = require('path'); // 引入 Node.js 路径处理模块
 const forge = require('node-forge'); // 引入 node-forge 用于加密
@@ -22,10 +22,20 @@ if (!fs.existsSync(qrcodesDir)) fs.mkdirSync(qrcodesDir, { recursive: true });
 // 生成 RSA 密钥对
 const keys = forge.pki.rsa.generateKeyPair(2048);
 const publicKey = keys.publicKey;
+const Koa = require('koa'); // 引入 Koa 框架
+const Router = require('@koa/router'); // 引入 Koa 路由
+const serve = require('koa-static'); // 引入 koa-static，用于处理静态文件
+const { koaBody } = require('koa-body'); // 引入 koa-body，用于解析请求体
+const cors = require('@koa/cors'); // 引入 @koa/cors，用于处理跨域
+const fs = require('fs'); // 引入 Node.js 文件系统模块
+// ... existing code ...
 const privateKey = keys.privateKey; // 私钥在此示例中未使用，但可用于解密
 
+app.use(cors()); // 使用 cors 中间件，允许所有跨域请求
 app.use(serve(path.join(__dirname, '..', 'public'))); // 使用 koa-static 中间件，托管 public 目录下的静态文件
 app.use(koaBody({ multipart: true, formidable: { uploadDir: uploadsDir } })); // 使用 koa-body 中间件，处理文件上传
+
+// ... existing code ...
 
 // 定义 POST /upload 路由，用于处理文件上传和二维码生成
 router.post('/upload', async (ctx) => {
