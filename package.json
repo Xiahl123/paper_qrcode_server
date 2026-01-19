@@ -1,0 +1,19 @@
+{
+  "name": "paper_qrcode_server",
+  "version": "1.0.0",
+  "description": "A Koa server to generate QR codes from CSV files.",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "dependencies": {
+    "@koa/router": "^12.0.0",
+    "csv-parser": "^3.0.0",
+    "jszip": "^3.7.1",
+    "koa": "^2.13.4",
+    "koa-body": "^6.0.1",
+    "koa-static": "^5.0.0",
+    "node-forge": "^1.3.1",
+    "qrcode": "^1.5.0"
+  }
+}
