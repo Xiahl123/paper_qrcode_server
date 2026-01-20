@@ -6,7 +6,7 @@
 
 1.  **上传 CSV 文件**: 用户可以通过前端页面上传一个 CSV 文件。
 2.  **解析和加密**: 服务器会解析 CSV 文件中的每一个单元格的字符串。
-3.  **RSA 加密**: 每个字符串都将使用 RSA-OAEP SHA-256 进行加密。
+3.  **AES-128-GCM + Base85 加密**: 每个字符串使用 AES-128-GCM 加密，密文经 Base85 编码后写入二维码。
 4.  **生成二维码**: 为每个加密后的字符串生成一个二维码图片。
 5.  **存储图片**: 二维码图片以加密字符串（经过 URL 安全处理）命名，并以 `.jpg` 格式存储在服务器上。
 6.  **预览二维码**: 前端页面会显示所有生成的二维码图片以供预览。
@@ -20,7 +20,7 @@
     -   [koa-body](https://github.com/dlau/koa-body): 请求体解析，用于文件上传
     -   [koa-static](https://github.com/koajs/static): 静态文件服务
     -   [csv-parser](https://github.com/mafintosh/csv-parser): 解析 CSV 文件
-    -   [node-forge](https://github.com/digitalbazaar/forge): 用于 RSA 加密
+    -   Node.js crypto: AES-128-GCM 对称加密
     -   [qrcode](https://github.com/soldair/node-qrcode): 生成二维码
     -   [jszip](https://github.com/Stuk/jszip): 创建 ZIP 文件
 -   **前端**:
@@ -71,5 +71,5 @@
 ## 注意事项
 
 -   每次上传新的 CSV 文件时，服务器会先清空 `public/qrcodes` 目录中所有旧的二维码图片。
--   RSA 密钥对是在服务器启动时在内存中动态生成的。如果服务器重启，密钥将会改变。对于生产环境，您应该考虑生成并持久化存储密钥对。
+-   启动前请在环境变量 `AES_KEY_B64` 中提供 **16 字节** AES 密钥的 Base64 编码，可使用仓库中的 `AES-128-GCM.py` 生成并保存。
 -   加密后的字符串可能包含在文件名或 URL 中不安全的字符（如 `/`）。代码已将其替换为 `_` 以确保安全。

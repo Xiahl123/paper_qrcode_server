@@ -5,7 +5,8 @@ const { koaBody } = require('koa-body'); // 引入 koa-body，用于解析请求
 const cors = require('@koa/cors'); // 引入 @koa/cors，用于处理跨域
 const fs = require('fs'); // 引入 Node.js 文件系统模块
 const path = require('path'); // 引入 Node.js 路径处理模块
-const forge = require('node-forge'); // 引入 node-forge 用于加密
+require('dotenv').config(); // 加载环境变量
+const crypto = require('crypto'); // 引入 Node.js crypto 用于 AES-GCM 加密
 const qrcode = require('qrcode'); // 引入 qrcode 用于生成二维码
 const csv = require('csv-parser'); // 引入 csv-parser 用于解析 CSV 文件
 const JSZip = require('jszip'); // 引入 jszip 用于创建 zip 文件
@@ -20,20 +21,58 @@ const qrcodesDir = path.join(__dirname, '..', 'public', 'qrcodes'); // 二维码
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 if (!fs.existsSync(qrcodesDir)) fs.mkdirSync(qrcodesDir, { recursive: true });
 
-// 公钥文件路径
-const publicKeyPath = path.join(__dirname, '..', 'paper_public_key.pem');
+// 加载 AES-128-GCM 密钥（Base64 编码，16 字节）
+const aesKeyBase64 = process.env.AES_KEY_B64;
+let aesKey;
 
-// 加载 RSA 公钥
-let publicKey;
+try {
+    if (!aesKeyBase64) {
+        throw new Error('缺少 AES_KEY_B64 环境变量（Base64 编码的 16 字节密钥）。');
+    }
 
-if (fs.existsSync(publicKeyPath)) {
-    console.log('加载 RSA 公钥...');
-    publicKey = forge.pki.publicKeyFromPem(fs.readFileSync(publicKeyPath, 'utf8'));
-    console.log('RSA 公钥加载成功！');
-} else {
-    console.error('错误：公钥文件不存在！请将 paper_public_key.pem 放置在项目根目录。');
+    aesKey = Buffer.from(aesKeyBase64, 'base64');
+
+    if (aesKey.length !== 16) {
+        throw new Error('AES_KEY_B64 长度无效，请提供精确 16 字节的 Base64 编码密钥。');
+    }
+
+    console.log('AES-128-GCM 密钥加载成功');
+} catch (error) {
+    console.error(`错误：${error.message}`);
     process.exit(1);
 }
+
+// Base85 (Git/Python b85) 编码实现，用于将二进制密文转为可放入二维码的短字符串
+const base85Alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz!#$%&()*+-;<=>?@^_`{|}~';
+const base85Encode = (buffer) => {
+    let output = '';
+
+    for (let i = 0; i < buffer.length; i += 4) {
+        const chunk = buffer.slice(i, i + 4);
+        const padding = 4 - chunk.length;
+        let value = 0;
+
+        for (let j = 0; j < chunk.length; j++) {
+            value = (value << 8) + chunk[j];
+        }
+
+        // 尾部零填充，保证按 4 字节块转 32 位整数
+        for (let j = 0; j < padding; j++) {
+            value <<= 8;
+        }
+
+        const encodedChunk = new Array(5);
+        for (let k = 4; k >= 0; k--) {
+            encodedChunk[k] = base85Alphabet[value % 85];
+            value = Math.floor(value / 85);
+        }
+
+        // 移除为填充字节产生的尾部字符
+        output += encodedChunk.slice(0, 5 - padding).join('');
+    }
+
+    return output;
+};
 
 app.use(cors()); // 使用 cors 中间件，允许所有跨域请求
 app.use(serve(path.join(__dirname, '..', 'public'))); // 使用 koa-static 中间件，托管 public 目录下的静态文件
@@ -63,13 +102,20 @@ router.post('/upload', async (ctx) => {
                     for (const cellValue in row) {
                         if (Object.prototype.hasOwnProperty.call(row, cellValue)) {
                             const originalString = row[cellValue]; // 获取单元格的原始字符串
-                            if(originalString) {
-                                // 使用 RSA-OAEP SHA-256 公钥加密
-                                const encrypted = publicKey.encrypt(originalString, 'RSA-OAEP', {
-                                    md: forge.md.sha256.create()
-                                });
-                                const encryptedString = forge.util.encode64(encrypted); // Base64 编码加密后的字符串
-                                
+                            if (originalString) {
+                                // 使用 AES-128-GCM 加密，输出 Base85 文本
+                                const iv = crypto.randomBytes(12); // GCM 推荐 12 字节随机 IV
+                                const cipher = crypto.createCipheriv('aes-128-gcm', aesKey, iv);
+                                const ciphertext = Buffer.concat([
+                                    cipher.update(originalString, 'utf8'),
+                                    cipher.final()
+                                ]);
+                                const authTag = cipher.getAuthTag();
+
+                                // 组合 nonce + ciphertext + tag，与 Python AESGCM.encrypt 输出一致
+                                const encryptedBuffer = Buffer.concat([iv, ciphertext, authTag]);
+                                const encryptedString = base85Encode(encryptedBuffer);
+
                                 // 使用原始字符串作为文件名（更短且有意义）
                                 const safeFileName = originalString.replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, '_'); // 移除特殊字符
                                 const qrPath = path.join(qrcodesDir, `${safeFileName}.jpg`); // 定义二维码图片的保存路径
