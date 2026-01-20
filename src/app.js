@@ -2,6 +2,7 @@ const Koa = require('koa'); // 引入 Koa 框架
 const Router = require('@koa/router'); // 引入 Koa 路由
 const serve = require('koa-static'); // 引入 koa-static，用于处理静态文件
 const { koaBody } = require('koa-body'); // 引入 koa-body，用于解析请求体
+const cors = require('@koa/cors'); // 引入 @koa/cors，用于处理跨域
 const fs = require('fs'); // 引入 Node.js 文件系统模块
 const path = require('path'); // 引入 Node.js 路径处理模块
 const forge = require('node-forge'); // 引入 node-forge 用于加密
@@ -19,23 +20,24 @@ const qrcodesDir = path.join(__dirname, '..', 'public', 'qrcodes'); // 二维码
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 if (!fs.existsSync(qrcodesDir)) fs.mkdirSync(qrcodesDir, { recursive: true });
 
-// 生成 RSA 密钥对
-const keys = forge.pki.rsa.generateKeyPair(2048);
-const publicKey = keys.publicKey;
-const Koa = require('koa'); // 引入 Koa 框架
-const Router = require('@koa/router'); // 引入 Koa 路由
-const serve = require('koa-static'); // 引入 koa-static，用于处理静态文件
-const { koaBody } = require('koa-body'); // 引入 koa-body，用于解析请求体
-const cors = require('@koa/cors'); // 引入 @koa/cors，用于处理跨域
-const fs = require('fs'); // 引入 Node.js 文件系统模块
-// ... existing code ...
-const privateKey = keys.privateKey; // 私钥在此示例中未使用，但可用于解密
+// 公钥文件路径
+const publicKeyPath = path.join(__dirname, '..', 'paper_public_key.pem');
+
+// 加载 RSA 公钥
+let publicKey;
+
+if (fs.existsSync(publicKeyPath)) {
+    console.log('加载 RSA 公钥...');
+    publicKey = forge.pki.publicKeyFromPem(fs.readFileSync(publicKeyPath, 'utf8'));
+    console.log('RSA 公钥加载成功！');
+} else {
+    console.error('错误：公钥文件不存在！请将 paper_public_key.pem 放置在项目根目录。');
+    process.exit(1);
+}
 
 app.use(cors()); // 使用 cors 中间件，允许所有跨域请求
 app.use(serve(path.join(__dirname, '..', 'public'))); // 使用 koa-static 中间件，托管 public 目录下的静态文件
 app.use(koaBody({ multipart: true, formidable: { uploadDir: uploadsDir } })); // 使用 koa-body 中间件，处理文件上传
-
-// ... existing code ...
 
 // 定义 POST /upload 路由，用于处理文件上传和二维码生成
 router.post('/upload', async (ctx) => {
@@ -67,12 +69,14 @@ router.post('/upload', async (ctx) => {
                                     md: forge.md.sha256.create()
                                 });
                                 const encryptedString = forge.util.encode64(encrypted); // Base64 编码加密后的字符串
-                                const safeEncryptedString = encryptedString.replace(/\//g, '_'); // 将文件名中的 / 替换为 _，使其对 URL 安全
-                                const qrPath = path.join(qrcodesDir, `${safeEncryptedString}.jpg`); // 定义二维码图片的保存路径
                                 
-                                // 生成二维码图片并保存
+                                // 使用原始字符串作为文件名（更短且有意义）
+                                const safeFileName = originalString.replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, '_'); // 移除特殊字符
+                                const qrPath = path.join(qrcodesDir, `${safeFileName}.jpg`); // 定义二维码图片的保存路径
+                                
+                                // 生成二维码图片并保存（二维码内容仍是加密字符串）
                                 await qrcode.toFile(qrPath, encryptedString, { type: 'jpeg' });
-                                qrCodeFiles.push({ path: qrPath, name: `${safeEncryptedString}.jpg` });
+                                qrCodeFiles.push({ path: qrPath, name: `${safeFileName}.jpg` });
                             }
                         }
                     }
