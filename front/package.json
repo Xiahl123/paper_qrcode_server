@@ -4,8 +4,9 @@
   "description": "前端页面 - CSV 二维码生成器",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
+     "start": "node server.js",
+     "dev": "node server.js",
+     "pm2": "pm2 start server.js --name paper-qrcode-front"
   },
   "dependencies": {
     "dotenv": "^16.3.1",
