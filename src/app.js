@@ -74,6 +74,47 @@ const base85Encode = (buffer) => {
     return output;
 };
 
+const qrTextLanguage = (process.env.QR_TEXT_LANG || 'zh').toLowerCase();
+const qrCopyByLanguage = {
+    zh: [
+        '请打开app的扫码核销',
+        '扫一扫立即补充次数'
+    ],
+    en: [
+        'Please open the app to scan and verify',
+        'Scan now to add more uses'
+    ]
+};
+
+const escapeXml = (value) => String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+
+const buildQrSvg = async (encryptedString, labelText) => {
+    const [topLine, secondLine] = qrCopyByLanguage[qrTextLanguage] || qrCopyByLanguage.zh;
+    const qrSvg = await qrcode.toString(encryptedString, {
+        type: 'svg',
+        margin: 1,
+        width: 320
+    });
+    const qrSvgWithPosition = qrSvg.replace(
+        /^[\s\S]*?<svg\b([^>]*)>/i,
+        '<svg$1 x="50" y="96" width="320" height="320">'
+    );
+
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="500" viewBox="0 0 420 500">
+  <rect width="420" height="500" rx="24" fill="#ffffff"/>
+  <text x="210" y="44" text-anchor="middle" font-family="Arial, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif" font-size="24" font-weight="700" fill="#111827" textLength="360" lengthAdjust="spacingAndGlyphs">${escapeXml(topLine)}</text>
+  <text x="210" y="76" text-anchor="middle" font-family="Arial, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif" font-size="24" font-weight="700" fill="#111827" textLength="360" lengthAdjust="spacingAndGlyphs">${escapeXml(secondLine)}</text>
+    ${qrSvgWithPosition}
+  <text x="210" y="458" text-anchor="middle" font-family="Arial, 'Noto Sans CJK SC', 'Microsoft YaHei', sans-serif" font-size="22" font-weight="600" fill="#111827" textLength="360" lengthAdjust="spacingAndGlyphs">${escapeXml(`编号：${labelText}`)}</text>
+</svg>`;
+};
+
 app.use(cors()); // 使用 cors 中间件，允许所有跨域请求
 app.use(serve(path.join(__dirname, '..', 'public'))); // 使用 koa-static 中间件，托管 public 目录下的静态文件
 app.use(koaBody({ multipart: true, formidable: { uploadDir: uploadsDir } })); // 使用 koa-body 中间件，处理文件上传
@@ -118,11 +159,12 @@ router.post('/upload', async (ctx) => {
 
                                 // 使用原始字符串作为文件名（更短且有意义）
                                 const safeFileName = originalString.replace(/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/g, '_'); // 移除特殊字符
-                                const qrPath = path.join(qrcodesDir, `${safeFileName}.jpg`); // 定义二维码图片的保存路径
+                                const qrPath = path.join(qrcodesDir, `${safeFileName}.svg`); // 定义二维码图片的保存路径
                                 
-                                // 生成二维码图片并保存（二维码内容仍是加密字符串）
-                                await qrcode.toFile(qrPath, encryptedString, { type: 'jpeg' });
-                                qrCodeFiles.push({ path: qrPath, name: `${safeFileName}.jpg` });
+                                // 生成带说明文字的二维码图片并保存（二维码内容仍是加密字符串）
+                                const qrSvg = await buildQrSvg(encryptedString, originalString);
+                                await fs.promises.writeFile(qrPath, qrSvg, 'utf8');
+                                qrCodeFiles.push({ path: qrPath, name: `${safeFileName}.svg` });
                             }
                         }
                     }
